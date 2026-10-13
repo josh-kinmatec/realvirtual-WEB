@@ -51,6 +51,8 @@ import { setDriveGizmoFallbackResolver } from '../../core/engine/drive-gizmo-sou
 import { askUnsavedChoice } from '../../core/hmi/scene/save-dialog-store';
 import { getProjectStore } from '../../core/project/project-store';
 import { createDocument } from '../../core/project/rv-document-ops';
+import { documentsOf } from '../../core/project/rv-project-documents';
+import { stableDocumentIdOfPath } from '../../core/editor/rv-asset-draft-storage';
 import { arrayBufferOf } from '../../core/project/rv-scene-record';
 import { newDocumentFolderFor, newDocumentNameFor } from '../../core/hmi/projects/dashboard-documents';
 import { resolveEditorDriveGizmoSource } from '@rv-private/plugins/asset-editor/editor-drive-gizmo-source';
@@ -200,11 +202,27 @@ export class CommunityAssetEditorPlugin implements RVViewerPlugin {
     const stale = (): boolean => generation !== this._generation;
 
     try {
-      const target = await this._resolveTarget();
+      const resolved = await this._resolveTarget();
       if (stale()) return;
-      if ('error' in target) { console.error(`[community-editor] ${target.error}`); return; }
+      if ('error' in resolved) { console.error(`[community-editor] ${resolved.error}`); return; }
+      let target: AssetBase = resolved;
 
-      const loaded = await readBase(target);
+      let loaded = await readBase(target);
+      // `web_editor_open source=library relPath=X` names `library/X`, but documents the
+      // editor creates itself live elsewhere in the project. When the library path does
+      // not exist, accept the relPath as project-relative before giving up.
+      if ('error' in loaded && target.kind === 'document' && target.path.startsWith('library/')) {
+        const projectPath = target.path.slice('library/'.length);
+        const row = documentsOf(getProjectStore().getProject()).find((d) => d.path === projectPath);
+        const alt: AssetBase = {
+          kind: 'document',
+          documentId: row?.id ?? stableDocumentIdOfPath(projectPath),
+          path: projectPath,
+          name: row?.name ?? target.name,
+        };
+        const retry = await readBase(alt);
+        if (!('error' in retry)) { target = alt; loaded = retry; }
+      }
       if (stale()) return;
       if ('error' in loaded) { console.error(`[community-editor] ${loaded.error}`); return; }
 
