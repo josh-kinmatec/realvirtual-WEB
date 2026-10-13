@@ -26,7 +26,7 @@ import {
   resolveStepFiles,
 } from '../src/plugins/community-editor/step-import';
 import { scratchAssetDocument } from './helpers/scratch-asset-document';
-import { assemblyStep, singlePartStep, stepBytes } from './helpers/step-fixtures';
+import { assemblyStep, gridAssemblyStep, singlePartStep, stepBytes } from './helpers/step-fixtures';
 
 const machine = (lidHeight = 20) => assemblyStep('Machine', [
   { part: { name: 'Base', geometry: { kind: 'box', size: [200, 100, 50] } }, offset: [0, 0, 0] },
@@ -80,6 +80,29 @@ describe('worker conversion', () => {
     await expect(convertStepInWorker(stepBytes('x').slice().buffer, { quality: 'fine', rootName: 'x', signal: controller.signal }))
       .rejects.toMatchObject({ name: 'AbortError' });
   }, 60_000);
+
+  it('keeps the main thread responsive while OCCT tessellates (no freeze)', async () => {
+    const bytes = stepBytes(gridAssemblyStep(120)).slice().buffer;
+    let maxGap = 0;
+    let ticks = 0;
+    let last = performance.now();
+    const timer = setInterval(() => {
+      const now = performance.now();
+      maxGap = Math.max(maxGap, now - last);
+      last = now;
+      ticks++;
+    }, 20);
+    const started = performance.now();
+    const { stats } = await convertStepInWorker(bytes, { quality: 'standard', rootName: 'Grid' });
+    const took = performance.now() - started;
+    clearInterval(timer);
+
+    expect(stats.meshes).toBe(120);
+    // Several seconds of OCCT work happened, yet the page's event loop kept ticking.
+    expect(took).toBeGreaterThan(500);
+    expect(ticks).toBeGreaterThan(took / 100);
+    expect(maxGap).toBeLessThan(500);
+  }, 120_000);
 
   it('falls back to the main thread when no worker can be created', async () => {
     const bytes = stepBytes(singlePartStep({ name: 'Cube', geometry: { kind: 'box', size: [10, 10, 10] } })).slice().buffer;

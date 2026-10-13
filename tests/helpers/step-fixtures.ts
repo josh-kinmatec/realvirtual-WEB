@@ -270,3 +270,13 @@ export function assemblyStep(
 export function stepBytes(text: string): Uint8Array {
   return new TextEncoder().encode(text);
 }
+
+/** `count` cylinders on a grid, as one assembly — a cheap way to make a "big" machine. */
+export function gridAssemblyStep(count: number, fileName = 'grid.stp'): string {
+  const side = Math.ceil(Math.sqrt(count));
+  const components: StepAssemblyComponent[] = Array.from({ length: count }, (_, i) => ({
+    part: { name: `Pin_${i + 1}`, geometry: { kind: 'cylinder' as const, radius: 10, height: 40 + (i % 7) * 5 } },
+    offset: [(i % side) * 50, Math.floor(i / side) * 50, 0] as Vec,
+  }));
+  return assemblyStep('Grid', components, fileName);
+}
