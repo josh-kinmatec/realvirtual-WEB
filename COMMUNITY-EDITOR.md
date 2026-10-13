@@ -41,10 +41,15 @@ separate layer of axis nodes plus group membership.
 | Authoring actions (kinematic groups, transforms, signals, logic steps, delete, select, materials) | `…/community-editor/*` | 241 tests of the original test suite pass against it |
 | Drive preview (`web_editor_verify_drive`, gizmo drag) | `drive-drag-preview.ts` | verified: axis + group move, exact restore |
 | STEP import (OCCT in a Web Worker, retessellate) | `…/step-import/` | tests pass; real large assemblies **not** measured |
-| Rapier physics | `src/plugins/community-physics/` | see the status in the hand-over notes |
+| Rapier physics (opt-in: set `localStorage['rv.physics']='on'`, reload) | `src/plugins/community-physics/` | 119 tests of the original suite pass against real Rapier; **dev server only** — a production build needs the Rapier ES module served and `setRapierModuleUrl()` called at boot, otherwise it stays kinematic |
 
 Test switches: `RV_RUN_PRIVATE_DEPENDENT_TESTS=1 npx vitest run tests/<file>` runs tests that the community
 build normally excludes (they import `@rv-private/*`, which now resolves to our implementations).
+
+**Regression check:** the full default suite (1,049 files) shows no failures caused by these changes. Three
+files fail identically on the untouched upstream commit (`spec-loading`, `spec-tables-sync`,
+`mechanism-mcp-inspect`) and `scene-store-settings-into-model-preflight` hangs on upstream as well.
+Several slow files time out when the whole suite runs in parallel on this PC but pass on their own.
 
 ## 4. Known gaps — read before relying on it
 
