@@ -28,7 +28,9 @@ const HAS_PRIVATE = existsSync(PRIVATE_DIR);
 // never resolve them, so they are excluded here. The list is generated — see
 // scripts/gen-private-test-excludes.mjs; the guard test
 // tests/private-test-excludes.node.test.ts fails when it drifts.
-const PRIVATE_DEPENDENT_TESTS: string[] = HAS_PRIVATE
+// RV_RUN_PRIVATE_DEPENDENT_TESTS=1 runs them anyway, against the community implementation of
+// the editor modules (src/plugins/community-editor) — the same opt-in vite.config.ts offers.
+const PRIVATE_DEPENDENT_TESTS: string[] = HAS_PRIVATE || process.env.RV_RUN_PRIVATE_DEPENDENT_TESTS === '1'
   ? []
   : JSON.parse(readFileSync(resolve(__dirname, 'tests/private-dependent-tests.json'), 'utf8'));
 
