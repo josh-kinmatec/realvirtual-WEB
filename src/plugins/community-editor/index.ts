@@ -1,8 +1,8 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+﻿// SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2025 realvirtual GmbH <https://realvirtual.io>
 
 /**
- * community-editor — a community implementation of the asset-editor WORKSPACE.
+ * community-editor â€” a community implementation of the asset-editor WORKSPACE.
  *
  * ## What this is, and what it is not
  *
@@ -14,10 +14,10 @@
  * resolve through `getActiveAssetContext()`. This plugin does exactly that, and
  * nothing more:
  *
- *  - registers the `editor` workspace mode (`runtime: 'detached'` — authoring is
+ *  - registers the `editor` workspace mode (`runtime: 'detached'` â€” authoring is
  *    not simulation),
- *  - on activation resolves WHICH document to open (pending request → what the
- *    scene already shows → last edited → a fresh document), loads its bytes into
+ *  - on activation resolves WHICH document to open (pending request â†’ what the
+ *    scene already shows â†’ last edited â†’ a fresh document), loads its bytes into
  *    the viewer as an authoring tree, and publishes the active document,
  *  - installs the drive preview driver the drive gizmo and `web_editor_verify_drive`
  *    need,
@@ -53,42 +53,17 @@ import { getProjectStore } from '../../core/project/project-store';
 import { createDocument } from '../../core/project/rv-document-ops';
 import { arrayBufferOf } from '../../core/project/rv-scene-record';
 import { newDocumentFolderFor, newDocumentNameFor } from '../../core/hmi/projects/dashboard-documents';
-import { EDITOR_LAST_ASSET_KEY } from '../../core/hmi/rv-storage-keys';
 import { resolveEditorDriveGizmoSource } from '@rv-private/plugins/asset-editor/editor-drive-gizmo-source';
 import { editorDriveDragDriver } from './drive-preview-driver';
 import { peekPendingAssetOpen, setPendingAssetOpen, takePendingAssetOpen } from './pending-open-store';
 import { resolveSelectionToAsset } from './selection-asset-resolver';
 import { runSaveFlow } from './save-flow';
+import { loadLastEditedAsset, saveLastEditedAsset } from './last-edited-asset-store';
 
 /** The id of the mode this plugin owns. */
 export const EDITOR_MODE_ID = 'editor';
 
-const LAST_ASSET_VERSION = 1;
-
-// ─── Last edited asset (the open chain's last resort) ─────────────────────
-
-/** Remember the document the editor opened, so a bare "open the editor" can resume it. */
-function rememberLastAsset(base: AssetBase): void {
-  if (base.kind !== 'document' || !base.path) return;
-  try {
-    localStorage.setItem(EDITOR_LAST_ASSET_KEY, JSON.stringify({ v: LAST_ASSET_VERSION, base, savedAt: Date.now() }));
-  } catch { /* best effort — storage may be unavailable */ }
-}
-
-/** The remembered document, or null for any unreadable, foreign or incomplete record. */
-function recallLastAsset(): AssetBase | null {
-  try {
-    const raw = localStorage.getItem(EDITOR_LAST_ASSET_KEY);
-    if (!raw) return null;
-    const rec = JSON.parse(raw) as { v?: number; base?: Partial<AssetBase> & { kind?: string } };
-    if (rec?.v !== LAST_ASSET_VERSION || rec.base?.kind !== 'document') return null;
-    const b = rec.base as Extract<AssetBase, { kind: 'document' }>;
-    if (!b.documentId || !b.path || !b.name) return null;
-    return { kind: 'document', documentId: b.documentId, path: b.path, name: b.name };
-  } catch { return null; }
-}
-
-// ─── Reading the bytes of a base ──────────────────────────────────────────
+// â”€â”€â”€ Reading the bytes of a base â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 interface LoadedBase {
   bytes: ArrayBuffer;
@@ -100,10 +75,10 @@ interface LoadedBase {
 async function readBase(base: AssetBase): Promise<LoadedBase | { error: string }> {
   if (base.kind === 'document') {
     if (!base.path) {
-      return { error: `"${base.name}" is a scene body, not a file — it cannot be opened in the community editor.` };
+      return { error: `"${base.name}" is a scene body, not a file â€” it cannot be opened in the community editor.` };
     }
     const backend = getProjectStore().getBackend();
-    if (!backend) return { error: 'No project is open — open or create one first.' };
+    if (!backend) return { error: 'No project is open â€” open or create one first.' };
     const record = await backend.readDocument(base.path).catch(() => null);
     if (!record?.bytes) return { error: `File not found in the open project: ${base.path}` };
     await noteLoadedRevision(backend, base.path);
@@ -134,7 +109,7 @@ async function loadInto(
   }
 }
 
-// ─── The plugin ───────────────────────────────────────────────────────────
+// â”€â”€â”€ The plugin â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export class CommunityAssetEditorPlugin implements RVViewerPlugin {
   readonly id = 'asset-editor';
@@ -151,7 +126,7 @@ export class CommunityAssetEditorPlugin implements RVViewerPlugin {
     this._viewer = viewer;
 
     // The editor opens what you were looking at. Resolved on `mode-changing`, which
-    // fires BEFORE the old mode's deactivate hook — the planner clears its selection
+    // fires BEFORE the old mode's deactivate hook â€” the planner clears its selection
     // in that hook, so asking later would find nothing.
     this._unsubs.push(viewer.on('mode-changing', ({ to }) => {
       if (to !== EDITOR_MODE_ID) return;
@@ -190,9 +165,9 @@ export class CommunityAssetEditorPlugin implements RVViewerPlugin {
     for (const off of this._unsubs.splice(0)) off();
   }
 
-  // ─── activation ─────────────────────────────────────────────────────────
+  // â”€â”€â”€ activation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  /** Which document to open: pending request → what the scene shows → last edited → new. */
+  /** Which document to open: pending request â†’ what the scene shows â†’ last edited â†’ new. */
   private async _resolveTarget(): Promise<AssetBase | { error: string }> {
     const pending = takePendingAssetOpen();
     if (pending) return pending;
@@ -200,14 +175,14 @@ export class CommunityAssetEditorPlugin implements RVViewerPlugin {
     const open = getOpenDocumentBase();
     if (open?.kind === 'document' && open.path) return open;
 
-    const last = recallLastAsset();
+    const last = loadLastEditedAsset();
     if (last) return last;
 
     // Nothing to resume: create a real document, exactly as the dashboard's "New"
     // does, so every document has a home before the editor opens it.
     const store = getProjectStore();
     if (!store.getBackend()?.writable) {
-      return { error: 'No writable project is open — open or create one before starting the editor.' };
+      return { error: 'No writable project is open â€” open or create one before starting the editor.' };
     }
     try {
       const folder = newDocumentFolderFor(store.getProject()?.id, null);
@@ -246,7 +221,7 @@ export class CommunityAssetEditorPlugin implements RVViewerPlugin {
       setDriveDragDriver(editorDriveDragDriver);
       setDriveGizmoFallbackResolver((path) => resolveEditorDriveGizmoSource(viewer, path) ?? null);
       setOpenDocumentBase(target);
-      rememberLastAsset(target);
+      saveLastEditedAsset(target);
       // Published LAST: the MCP tools poll `getActiveAssetContext()` and treat its
       // presence as "the editor is fully ready".
       setActiveAssetContext({ viewer, doc });
@@ -255,7 +230,7 @@ export class CommunityAssetEditorPlugin implements RVViewerPlugin {
     }
   }
 
-  // ─── deactivation ───────────────────────────────────────────────────────
+  // â”€â”€â”€ deactivation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   private _deactivate(viewer: RVViewer): void {
     this._generation++;                                        // cancels an activation still loading
@@ -294,7 +269,7 @@ export class CommunityAssetEditorPlugin implements RVViewerPlugin {
 /**
  * Register the editor workspace and its plugin. Idempotent.
  *
- * Called from the feature-registration hook (`registerPrivatePlugins`) — the one
+ * Called from the feature-registration hook (`registerPrivatePlugins`) â€” the one
  * place a licensed build registers the same mode. The descriptor is a flat literal
  * with `runtime: 'detached'` on purpose: `editor-mode-detached.node.test.ts` scans
  * for exactly this shape, because a registration without it silently re-attaches
