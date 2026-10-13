@@ -107,7 +107,7 @@ function isIgnoredForOtherComponents(key: string): boolean {
 
 /** Analyse a selection snapshot against the live scene. */
 export function computeQuickEditContext(
-  viewer: Pick<RVViewer, 'registry'> | RVViewer,
+  viewer: Pick<RVViewer, 'registry'>,
   selection: Pick<SelectionSnapshot, 'selectedPaths' | 'primaryPath'>,
 ): QuickEditContext {
   const ctx = emptyContext(selection.selectedPaths.length);
