@@ -60,6 +60,7 @@ import { editorDriveDragDriver } from './drive-preview-driver';
 import { peekPendingAssetOpen, setPendingAssetOpen, takePendingAssetOpen } from './pending-open-store';
 import { resolveSelectionToAsset } from './selection-asset-resolver';
 import { runSaveFlow } from './save-flow';
+import { publishEditorDocumentView } from './document-view';
 import { loadLastEditedAsset, saveLastEditedAsset } from './last-edited-asset-store';
 
 /** The id of the mode this plugin owns. */
@@ -122,6 +123,7 @@ export class CommunityAssetEditorPlugin implements RVViewerPlugin {
   private _generation = 0;
   private _doc: AssetDocument | null = null;
   private _base: AssetBase | null = null;
+  private _unpublishView: (() => void) | null = null;
   private readonly _unsubs: Array<() => void> = [];
 
   init(viewer: RVViewer): void {
@@ -243,6 +245,7 @@ export class CommunityAssetEditorPlugin implements RVViewerPlugin {
       // Published LAST: the MCP tools poll `getActiveAssetContext()` and treat its
       // presence as "the editor is fully ready".
       setActiveAssetContext({ viewer, doc });
+      this._unpublishView = publishEditorDocumentView(viewer, doc);
     } catch (e) {
       console.error('[community-editor] activation failed:', e);
     }
@@ -257,6 +260,8 @@ export class CommunityAssetEditorPlugin implements RVViewerPlugin {
     this._doc = null;
     this._base = null;
 
+    this._unpublishView?.();
+    this._unpublishView = null;
     setActiveAssetContext(null);
     setDriveDragDriver(null);
     setDriveGizmoFallbackResolver(null);
