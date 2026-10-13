@@ -29,6 +29,10 @@ console.log(`[rv-build] ${HAS_PRIVATE ? 'Private' : 'Public'} build${process.env
 // answer. With the file present the behaviour is unchanged.
 function privateDependentTestExcludes(): string[] {
   if (existsSync(PRIVATE_DIR)) return [];
+  // Opt-in: run the private-dependent tests against the community implementation of the
+  // editor modules (src/plugins/community-editor). Off by default — the community CI view is
+  // unchanged.
+  if (process.env.RV_RUN_PRIVATE_DEPENDENT_TESTS === '1') return [];
   const list = resolve(__dirname, 'tests/private-dependent-tests.json');
   if (!existsSync(list)) return [];
   return JSON.parse(readFileSync(list, 'utf-8')) as string[];
