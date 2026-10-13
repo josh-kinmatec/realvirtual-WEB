@@ -2,19 +2,8 @@
 // Copyright (C) 2025 realvirtual GmbH <https://realvirtual.io>
 
 /**
- * plugins/asset-editor/test-session-store.ts — community stub for the COMMERCIAL asset editor (plan-434).
- *
- * The GLB authoring UI lives in the private sibling. Without it `@rv-private/*`
- * resolves here, so the core still type-checks, builds and runs — the editor is
- * simply absent. Every export is an inert no-op; nothing in this file is reached
- * unless the caller is an editor-only code path, which a community build never
- * enters (no AssetEditorPlugin, no Editor mode).
+ * Community implementation — see src/plugins/community-editor/test-session-store.ts.
+ * (This path is what @rv-private/plugins/asset-editor/test-session-store resolves to when no private sibling is present.)
  */
 
-export type TestSessionState = 'idle' | 'preparing' | 'running' | 'restoring' | 'failed';
-export type InPlaceTestSessionLike = { state: TestSessionState; start: () => Promise<void>; stop: () => Promise<void> };
-
-//! There is no in-place test session without the editor.
-export function getTestSessionState(): TestSessionState { return 'idle'; }
-export function getActiveTestSession(): InPlaceTestSessionLike | null { return null; }
-export function subscribeTestSession(_listener: () => void): () => void { return () => undefined; }
+export * from '../../../plugins/community-editor/test-session-store';
