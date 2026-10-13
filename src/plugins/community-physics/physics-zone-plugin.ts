@@ -668,7 +668,8 @@ export class PhysicsZonePlugin implements RVViewerPlugin, IPhysicsMUHook {
   }
 
   private _buildSurfaces(provider: PhysicsProvider, tm: RVTransportManager, zones: RVPhysicsZone[]): void {
-    if (!RVTransportSurface.physicsDefault) return; // deployment kill-switch wins over everything
+    // The deployment kill-switch wins over `PhysicsMode` AND full physics.
+    const allowManaged = RVTransportSurface.physicsDefault;
     const full = physicsSettings.full;
     const managed = new Set<RVTransportSurface>();
     const conveyors: ConveyorEntry[] = [];
@@ -676,30 +677,38 @@ export class PhysicsZonePlugin implements RVViewerPlugin, IPhysicsMUHook {
 
     for (let i = 0; i < tm.surfaces.length; i++) {
       const surface = tm.surfaces[i];
-      if (!full && !surface.PhysicsMode) continue;
-      if (surface.Radial) {
-        if (full) radialInFull++;
-        else console.warn(`[physics-zone] radial surface "${surface.node.name}" (PhysicsMode) is not supported (v1 exclusion) — stays kinematic`);
-        continue;
-      }
       surface.updateAABB();
 
-      // A surface is physics-managed only when FULLY inside a zone (belts are never cut).
       let zone: RVPhysicsZone | null = null;
-      for (const z of zones) {
-        if (full ? z.containsAABB(surface.aabb) : surface.isPhysicsManaged(z)) { zone = z; break; }
-      }
-      if (!zone) {
-        if (surface.PhysicsMode && zones.some((z) => z.overlapsAABB(surface.aabb))) {
-          console.warn(`[physics-zone] surface "${surface.node.name}" partially overlaps a physics zone — stays kinematic (a belt is never cut by a zone boundary)`);
+      if (allowManaged && (full || surface.PhysicsMode)) {
+        if (surface.Radial) {
+          if (full) radialInFull++;
+          else console.warn(`[physics-zone] radial surface "${surface.node.name}" (PhysicsMode) is not supported (v1 exclusion) — stays kinematic`);
+        } else {
+          // A surface is physics-managed only when FULLY inside a zone (belts are never cut).
+          for (const z of zones) {
+            if (full ? z.containsAABB(surface.aabb) : surface.isPhysicsManaged(z)) { zone = z; break; }
+          }
+          if (!zone && surface.PhysicsMode && zones.some((z) => z.overlapsAABB(surface.aabb))) {
+            console.warn(`[physics-zone] surface "${surface.node.name}" partially overlaps a physics zone — stays kinematic (a belt is never cut by a zone boundary)`);
+          }
         }
-        continue;
       }
 
-      const id = `conveyor:${i}:${surface.node.name}`;
-      provider.addConveyor(id, toVec(surface.aabb.center), toVec(surface.aabb.halfSize), Q_IDENTITY, zone.Friction);
-      managed.add(surface);
-      conveyors.push({ id, surface });
+      if (zone) {
+        const id = `conveyor:${i}:${surface.node.name}`;
+        provider.addConveyor(id, toVec(surface.aabb.center), toVec(surface.aabb.halfSize), Q_IDENTITY, zone.Friction);
+        managed.add(surface);
+        conveyors.push({ id, surface });
+      } else if (surface.aabb.halfSize.lengthSq() > 0 && zones.some((z) => z.overlapsAABB(surface.aabb))) {
+        // A kinematic surface inside a zone is still SOLID for physics MUs: one that
+        // falls onto it must rest on it (and may then return to the kinematic
+        // pipeline, F7) instead of dropping through. Snapshot of the load pose.
+        provider.addStaticBox(
+          `surface:${i}:${surface.node.name}`,
+          toVec(surface.aabb.center), toVec(surface.aabb.halfSize), Q_IDENTITY,
+        );
+      }
     }
 
     if (radialInFull > 0) {
