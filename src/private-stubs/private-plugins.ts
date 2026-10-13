@@ -9,12 +9,15 @@
  * subsystems here; a community build registers the community implementations that
  * live in `src/plugins/community-editor/`:
  *
- *  - the asset-editor workspace (mode + plugin), driven through the MCP tools.
+ *  - the asset-editor workspace (mode + plugin), driven through the MCP tools,
+ *  - the Rapier physics zone plugin (opt-in at runtime through the 'rv.physics' setting).
  */
 
 import type { RVViewer } from '../core/rv-viewer';
 import { registerCommunityEditor } from '../plugins/community-editor';
+import { registerCommunityPhysics } from '../plugins/community-physics';
 
 export async function registerPrivatePlugins(viewer: RVViewer): Promise<void> {
   registerCommunityEditor(viewer);
+  registerCommunityPhysics(viewer);
 }
