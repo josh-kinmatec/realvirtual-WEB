@@ -54,8 +54,6 @@ interface Snapshot {
   timer: ReturnType<typeof setInterval> | null;
 }
 
-const _snapshots = new Map<Object3D, Snapshot>();
-
 const _axis = new Vector3();
 const _euler = new Euler();
 const _delta = new Quaternion();
@@ -185,21 +183,27 @@ function restoreAll(ctx: DriveDragContext, snap: Snapshot): void {
   viewer.markShadowsDirty?.();
 }
 
-export const editorDriveDragDriver: DriveDragDriver = {
-  preview(ctx) {
-    let snap = _snapshots.get(ctx.node);
+/** One preview session per viewer: owns the home-pose snapshots of the axes being previewed. */
+export class DriveDragPreview implements DriveDragDriver {
+  private readonly _snapshots = new Map<Object3D, Snapshot>();
+
+  /** The viewer is accepted for symmetry with the other editor tools; contexts carry their own. */
+  constructor(_viewer?: unknown) { /* nothing to hold */ }
+
+  preview(ctx: DriveDragContext): void {
+    let snap = this._snapshots.get(ctx.node);
     if (!snap) {
       snap = capture(ctx);
-      _snapshots.set(ctx.node, snap);
+      this._snapshots.set(ctx.node, snap);
     }
     // A new gesture interrupts a spring-back that is still running.
     if (snap.timer) { clearInterval(snap.timer); snap.timer = null; }
     snap.lastPosition = ctx.position;
     applyPosition(ctx, snap, ctx.position);
-  },
+  }
 
-  release(ctx) {
-    const snap = _snapshots.get(ctx.node);
+  release(ctx: DriveDragContext): void {
+    const snap = this._snapshots.get(ctx.node);
     if (!snap) return;
     if (snap.timer) clearInterval(snap.timer);
     const from = snap.lastPosition;
@@ -212,21 +216,21 @@ export const editorDriveDragDriver: DriveDragDriver = {
       applyPosition(ctx, snap, from + (homePosition - from) * eased);
       if (t >= 1) {
         restoreAll(ctx, snap);
-        _snapshots.delete(ctx.node);
+        this._snapshots.delete(ctx.node);
       }
     }, SPRING_STEP_MS);
-  },
+  }
 
-  cancel(ctx) {
-    const snap = _snapshots.get(ctx.node);
+  cancel(ctx: DriveDragContext): void {
+    const snap = this._snapshots.get(ctx.node);
     if (!snap) return;
     restoreAll(ctx, snap);
-    _snapshots.delete(ctx.node);
-  },
-};
+    this._snapshots.delete(ctx.node);
+  }
 
-/** Tests only: drop every snapshot and stop every spring-back timer. */
-export function _resetDrivePreviewForTests(): void {
-  for (const snap of _snapshots.values()) if (snap.timer) clearInterval(snap.timer);
-  _snapshots.clear();
+  /** Stop every spring-back timer and drop every snapshot (editor deactivation). */
+  dispose(): void {
+    for (const snap of this._snapshots.values()) if (snap.timer) clearInterval(snap.timer);
+    this._snapshots.clear();
+  }
 }

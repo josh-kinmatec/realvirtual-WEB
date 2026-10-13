@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2025 realvirtual GmbH <https://realvirtual.io>
 
 /**
@@ -46,7 +46,7 @@ import {
 } from '../../core/editor/active-asset-store';
 import { noteLoadedRevision } from '../../core/editor/rv-save-document';
 import { clearDocumentDraft } from '../../core/ops/rv-document-drafts';
-import { setDriveDragDriver } from '../../core/engine/drive-drag-driver';
+import { setDriveDragDriver, type DriveDragDriver } from '../../core/engine/drive-drag-driver';
 import { setDriveGizmoFallbackResolver } from '../../core/engine/drive-gizmo-source';
 import { askUnsavedChoice } from '../../core/hmi/scene/save-dialog-store';
 import { getProjectStore } from '../../core/project/project-store';
@@ -56,7 +56,9 @@ import { stableDocumentIdOfPath } from '../../core/editor/rv-asset-draft-storage
 import { arrayBufferOf } from '../../core/project/rv-scene-record';
 import { newDocumentFolderFor, newDocumentNameFor } from '../../core/hmi/projects/dashboard-documents';
 import { resolveEditorDriveGizmoSource } from '@rv-private/plugins/asset-editor/editor-drive-gizmo-source';
-import { editorDriveDragDriver } from './drive-preview-driver';
+import { DriveDragPreview } from './drive-drag-preview';
+import { EditorTransformTool } from './EditorTransformTool';
+import { registerStepImport } from './step-import';
 import { peekPendingAssetOpen, setPendingAssetOpen, takePendingAssetOpen } from './pending-open-store';
 import { resolveSelectionToAsset } from './selection-asset-resolver';
 import { runSaveFlow } from './save-flow';
@@ -124,6 +126,8 @@ export class CommunityAssetEditorPlugin implements RVViewerPlugin {
   private _doc: AssetDocument | null = null;
   private _base: AssetBase | null = null;
   private _unpublishView: (() => void) | null = null;
+  private _drivePreview: DriveDragPreview | null = null;
+  private _transformTool: EditorTransformTool | null = null;
   private readonly _unsubs: Array<() => void> = [];
 
   init(viewer: RVViewer): void {
@@ -159,6 +163,11 @@ export class CommunityAssetEditorPlugin implements RVViewerPlugin {
 
   onModeActivate(_mode: ModeId, viewer: RVViewer): void {
     void this._activate(viewer);
+  }
+
+  /** Keeps the transform gizmo screen-constant and in step with undo/redo and inspector edits. */
+  onRender(): void {
+    this._transformTool?.update();
   }
 
   onModeDeactivate(_mode: ModeId | null, viewer: RVViewer): void {
@@ -238,7 +247,20 @@ export class CommunityAssetEditorPlugin implements RVViewerPlugin {
       this._doc = doc;
       this._base = target;
 
-      setDriveDragDriver(editorDriveDragDriver);
+      // Drive previews (gizmo drag + web_editor_verify_drive) and the move/rotate gizmo.
+      // The two must never fight: the drive gizmo yields while the transform gizmo is engaged.
+      const preview = new DriveDragPreview(viewer);
+      const tool = new EditorTransformTool(viewer, doc);
+      tool.install();
+      this._drivePreview = preview;
+      this._transformTool = tool;
+      const driver: DriveDragDriver = {
+        preview: (c) => preview.preview(c),
+        release: (c) => preview.release(c),
+        cancel: (c) => preview.cancel(c),
+        isBlocked: () => tool.isEngaged,
+      };
+      setDriveDragDriver(driver);
       setDriveGizmoFallbackResolver((path) => resolveEditorDriveGizmoSource(viewer, path) ?? null);
       setOpenDocumentBase(target);
       saveLastEditedAsset(target);
@@ -262,6 +284,10 @@ export class CommunityAssetEditorPlugin implements RVViewerPlugin {
 
     this._unpublishView?.();
     this._unpublishView = null;
+    this._transformTool?.uninstall();
+    this._transformTool = null;
+    this._drivePreview?.dispose();
+    this._drivePreview = null;
     setActiveAssetContext(null);
     setDriveDragDriver(null);
     setDriveGizmoFallbackResolver(null);
@@ -302,6 +328,7 @@ export function registerCommunityEditor(viewer: RVViewer): void {
   if (viewer.getPlugin('asset-editor')) return;
   viewer.modes.register({ id: 'editor', label: 'Editor', icon: 'Edit', order: 40, runtime: 'detached' });
   viewer.use(new CommunityAssetEditorPlugin());
+  registerStepImport();
 
   // A reload during an editing session must not boot into an editor with nothing to
   // open: the community editor does not resume sessions, so forget that it was active.
