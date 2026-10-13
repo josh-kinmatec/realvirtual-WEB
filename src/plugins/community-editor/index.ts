@@ -54,6 +54,8 @@ import { createDocument } from '../../core/project/rv-document-ops';
 import { documentsOf } from '../../core/project/rv-project-documents';
 import { stableDocumentIdOfPath } from '../../core/editor/rv-asset-draft-storage';
 import { arrayBufferOf } from '../../core/project/rv-scene-record';
+import { importIntoAsset } from '../../core/import/rv-import-asset';
+import type { ImportResultItem } from '../../core/import/rv-import-provider';
 import { newDocumentFolderFor, newDocumentNameFor } from '../../core/hmi/projects/dashboard-documents';
 import { resolveEditorDriveGizmoSource } from '@rv-private/plugins/asset-editor/editor-drive-gizmo-source';
 import { DriveDragPreview } from './drive-drag-preview';
@@ -165,6 +167,16 @@ export class CommunityAssetEditorPlugin implements RVViewerPlugin {
     void this._activate(viewer);
   }
 
+  /**
+   * The editor import sink: the Import dialog (editor mode) hands every resolved item
+   * here, and each becomes one undoable `importCad` op on the open document.
+   */
+  async importItems(items: ImportResultItem[]): Promise<string[]> {
+    const doc = this._doc;
+    if (!doc) throw new Error('[import] No editor document is open yet — wait until the editor has finished loading.');
+    return importIntoAsset(doc, items);
+  }
+
   /** Keeps the transform gizmo screen-constant and in step with undo/redo and inspector edits. */
   onRender(): void {
     this._transformTool?.update();
@@ -180,16 +192,26 @@ export class CommunityAssetEditorPlugin implements RVViewerPlugin {
 
   // â”€â”€â”€ activation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+  private async _existsInProject(path: string): Promise<boolean> {
+    const backend = getProjectStore().getBackend();
+    if (!backend) return false;
+    return (await backend.readDocument(path).catch(() => null)) !== null;
+  }
+
   /** Which document to open: pending request â†’ what the scene shows â†’ last edited â†’ new. */
   private async _resolveTarget(): Promise<AssetBase | { error: string }> {
     const pending = takePendingAssetOpen();
     if (pending) return pending;
 
-    const open = getOpenDocumentBase();
-    if (open?.kind === 'document' && open.path) return open;
-
-    const last = loadLastEditedAsset();
-    if (last) return last;
+    // Only resume a document the OPEN PROJECT can actually read. The scene on screen or
+    // the remembered asset may belong to a project that has since been closed or replaced
+    // (e.g. the demo is still showing while a new project is open); resuming it would
+    // leave the editor with nothing loaded.
+    for (const candidate of [getOpenDocumentBase(), loadLastEditedAsset()]) {
+      if (candidate?.kind === 'document' && candidate.path && await this._existsInProject(candidate.path)) {
+        return candidate;
+      }
+    }
 
     // Nothing to resume: create a real document, exactly as the dashboard's "New"
     // does, so every document has a home before the editor opens it.

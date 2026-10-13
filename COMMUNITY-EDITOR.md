@@ -60,6 +60,11 @@ Several slow files time out when the whole suite runs in parallel on this PC but
 - **Behaviour the repo does not specify was chosen by us** (axis naming `_N` suffixes, pivot = vertex mean for
   `pivotToObjectCenter`, material preset ids/colours, STEP quality → tessellation tolerances
   draft 0.004 / standard 0.001 / fine 0.0002). Review these against your expectations.
+- **Big STEP files (hundreds of MB):** the in-browser converter is capped at 4 GB of WebAssembly memory and
+  fails with "ran out of memory". Convert natively instead:
+  `python -m pip install cascadio numpy`, then
+  `python scripts/step-to-glb.py big.stp big.glb --quality draft`, and import the GLB (Import dialog →
+  "GLB File" tab, or `web_editor_import_glb`). The script writes metres and Y-up; the tolerances are our own choice.
 - **STEP performance:** 1000 simple parts ≈ 31 s, 3000 ≈ 5 min (synthetic data, headless). Real assemblies
   with hundreds of MB and the 4 GB WASM heap limit were not tested. On out-of-memory OCCT returns no geometry;
   the importer reports it and suggests `quality=draft`.
