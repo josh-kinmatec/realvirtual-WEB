@@ -100,6 +100,27 @@ describe('RVSource — clones must not carry component/layout metadata', () => {
     expect(hasComponentMetadata(spawned!)).toBe(false);
   });
 
+  it('a spawned MU clone drops the template\'s hidden raycast BVH proxy', () => {
+    // Regression: the force-visible pass in _buildRealClone turned the cloned
+    // (engine-internal, hidden) `__raycastBVH_*` proxy visible, so every
+    // carrier spawned from that template rendered as a white overlay.
+    const { source, sceneRoot, template } = createPlacedSource();
+    const proxy = new Mesh(new BoxGeometry(1.2, 0.15, 0.8), new MeshBasicMaterial());
+    proxy.name = '__raycastBVH_EuropalletLoaded';
+    proxy.visible = false;
+    proxy.userData._rvRaycastBVH = true;
+    template.add(proxy);
+
+    source.update(1, true);
+    const spawned = sceneRoot.children.find((c) => c.name === 'EuropalletLoaded_0');
+    expect(spawned).toBeTruthy();
+    let proxies = 0;
+    spawned!.traverse((c) => { if (c.userData?._rvRaycastBVH) proxies++; });
+    expect(proxies).toBe(0);
+    // The template keeps its own proxy for picking.
+    expect(template.children).toContain(proxy);
+  });
+
   it('spawned MUs are siblings at the spawn parent, never nested under the source', () => {
     const { source, sceneRoot } = createPlacedSource();
     source.update(1, true);

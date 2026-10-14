@@ -963,6 +963,9 @@ export class RVSource implements RVComponent {
     clone.traverse((child) => {
       const ud = child.userData;
       if (ud?._isSourceGhost || ud?._isGhostOverlay || ud?._isSourcePreview) strip.push(child);
+      // A raycast BVH proxy built under the template is engine-internal: the
+      // force-visible pass below would render it as a white overlay over the MU.
+      else if (ud?._rvRaycastBVH) strip.push(child);
     });
     for (const n of strip) n.parent?.remove(n);
 
